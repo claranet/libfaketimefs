@@ -1,0 +1,7 @@
+*.pyc
+*.egg-info/
+.direnv/
+.vscode/
+build/
+dist/
+testmount/
