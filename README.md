@@ -21,14 +21,15 @@ Use libfaketime and libfaketimefs to fast forward at 60 seconds per second:
 
 ```
 # Build and send a fast forward command (see the File API documentation)
-NOW=$(shell date +%s)
-TOMORROW=$(shell date -d tomorrow +%s)
-echo "$NOW $NOW $TOMORROW 60" > /run/libfaketimefs/control
+NOW=$(date +%s)
+TOMORROW=$(date -d tomorrow +%s)
+RATE=180
+echo "$NOW $NOW $TOMORROW $RATE" > /run/libfaketimefs/control
 
 # Enable libfaketime and configure it to use libfaketimefs
-LD_PRELOAD=libfaketime.so.1
-FAKETIME_TIMESTAMP_FILE=/run/libfaketimefs/faketimerc
-FAKETIME_NO_CACHE=1
+export LD_PRELOAD=libfaketime.so.1
+export FAKETIME_TIMESTAMP_FILE=/run/libfaketimefs/faketimerc
+export FAKETIME_NO_CACHE=1
 
 # Watch the result
 watch -n 1 date
