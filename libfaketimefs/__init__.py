@@ -59,7 +59,7 @@ class Faketime(LoggingMixIn, Operations):
         now = time()
         if path == '/':
             return dict(
-                st_mode=S_IFDIR,
+                st_mode=S_IFDIR | 0o755,
                 st_ctime=now,
                 st_mtime=now,
                 st_atime=now,
@@ -67,8 +67,12 @@ class Faketime(LoggingMixIn, Operations):
             )
         else:
             value = self.get_value(path)
+            if path in self.temp_files:
+                mode = 0o666
+            else:
+                mode = 0o444
             return dict(
-                st_mode=S_IFREG,
+                st_mode=S_IFREG | mode,
                 st_ctime=now,
                 st_mtime=now,
                 st_atime=now,

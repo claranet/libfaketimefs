@@ -45,7 +45,7 @@ clean:
 run:
 	flake8 ./bin/* ./libfaketimefs/*.py || true
 	mkdir -p testmount
-	libfaketimefs testmount
+	libfaketimefs testmount --debug
 
 now := $(shell date +%s)
 now10s := $(shell date -d '+10 seconds' +%s)
