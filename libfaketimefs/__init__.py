@@ -2,7 +2,7 @@ from __future__ import print_function
 
 import re
 
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from errno import ENOENT, EPERM
 from heapq import heappop, heappush
 from itertools import chain
@@ -21,6 +21,8 @@ CONTROL_COMMAND = re.compile(' '.join((
     r'(?P<time2>\d+)',
     r'(?P<rate>\d+)',
 )))
+
+Command = namedtuple('Command', 'ref, time1, time2, rate')
 
 
 class Faketime(LoggingMixIn, Operations):
@@ -42,7 +44,12 @@ class Faketime(LoggingMixIn, Operations):
         self.file_locks = defaultdict(Lock)
 
         now = int(time())
-        self.faketime_control = (now, now, now, 0)
+        self.faketime_control = Command(
+            ref=now,
+            time1=now,
+            time2=now,
+            rate=1,
+        )
 
     # Info methods
 
@@ -137,41 +144,26 @@ class Faketime(LoggingMixIn, Operations):
 
         if path == '/faketimerc':
 
-            ref, time1, time2, rate = self.faketime_control
-
-            if time1 == time2:
-                offset = time1 - ref
-            else:
-                elapsed = time() - ref
-                position = time1 + (elapsed * rate) - elapsed
-                if position > time2:
-                    offset = time2 - ref
-                else:
-                    offset = position - ref
-
-            if offset >= 0:
-                return '+{}'.format(offset)
-            else:
-                return '{}'.format(offset)
+            command = self.faketime_control
+            offset = calculate_offset(command)
+            return '{:+f}'.format(offset)
 
         if path == '/realtime':
+
             return '{:.22f}'.format(time())
 
         if path == '/status':
 
-            ref, time1, time2, rate = self.faketime_control
+            command = self.faketime_control
+            fake_time = calculate_fake_time(command)
 
-            if time1 == time2:
+            if fake_time > command.time2:
                 return 'IDLE'
             else:
-                elapsed = time() - ref
-                position = time1 + (elapsed * rate) - elapsed
-                if position > time2:
-                    return 'IDLE'
-                else:
-                    return 'MOVING'
+                return 'MOVING'
 
         if path in self.temp_files:
+
             with self.file_locks[path]:
                 temp_file = self.temp_files[path]
                 temp_file.seek(0)
@@ -185,11 +177,100 @@ class Faketime(LoggingMixIn, Operations):
             value = value.strip()
             match = CONTROL_COMMAND.match(value)
             if match:
-                ref = int(match.group('ref'))
-                time1 = int(match.group('time1'))
-                time2 = int(match.group('time2'))
-                rate = int(match.group('rate'))
-                self.faketime_control = (ref, time1, time2, rate)
+                self.faketime_control = Command(
+                    ref=int(match.group('ref')),
+                    time1=int(match.group('time1')),
+                    time2=int(match.group('time2')),
+                    rate=int(match.group('rate')),
+                )
                 return
 
         raise FuseOSError(ENOENT)
+
+
+def calculate_fake_time(command, now=None):
+    """
+    Calculates the fake time from a command and the real time.
+
+    >>> cmd = (0, 0, 10, 2)
+    >>> calculate_fake_time(cmd, now=0)
+    0
+    >>> calculate_fake_time(cmd, now=1)
+    2
+    >>> calculate_fake_time(cmd, now=5)
+    10
+    >>> calculate_fake_time(cmd, now=6)
+    11.0
+
+    >>> cmd = (0, 10, 20, 2)
+    >>> calculate_fake_time(cmd, now=0)
+    10
+    >>> calculate_fake_time(cmd, now=1)
+    12
+    >>> calculate_fake_time(cmd, now=5)
+    20
+    >>> calculate_fake_time(cmd, now=6)
+    21.0
+
+    """
+
+    if now is None:
+        now = time()
+
+    offset = calculate_offset(command, now)
+
+    return now + offset
+
+
+def calculate_offset(command, now=None):
+    """
+    Calculates the offset from a command and the real time.
+
+    >>> cmd = (0, 0, 10, 2)
+    >>> calculate_offset(cmd, now=0)
+    0
+    >>> calculate_offset(cmd, now=1)
+    1
+    >>> calculate_offset(cmd, now=5)
+    5
+    >>> calculate_offset(cmd, now=6)
+    5.0
+
+    >>> cmd = (0, 10, 20, 2)
+    >>> calculate_offset(cmd, now=0)
+    10
+    >>> calculate_offset(cmd, now=1)
+    11
+    >>> calculate_offset(cmd, now=5)
+    15
+    >>> calculate_offset(cmd, now=6)
+    15.0
+
+    """
+
+    ref, time1, time2, rate = command
+
+    # The starting point of fast forwarding is already in the future
+    # if time1 is ahead of when the command was issued (ref time).
+    initial_offset = time1 - ref
+
+    # There is a window of time where it will be fast forwarding.
+    # Calculate that and also how much real time that would take.
+    window_fast = time2 - time1
+    window_real = window_fast / float(rate)
+
+    # Get how much real time has passed since the command was issued.
+    if now is None:
+        now = time()
+    elapsed = now - ref
+
+    # Discard any time elapsed after the fast forwarding end point,
+    # because the offset should stop increasing at that point.
+    if elapsed > window_real:
+        elapsed = window_real
+
+    # Now calculate the offset. Use the intial offset and the fast
+    # forwaded time. Subtract the amount of time it has been fast
+    # forwarding because that is already included in the fast amount.
+    elapsed_fast = elapsed * rate
+    return initial_offset + elapsed_fast - elapsed

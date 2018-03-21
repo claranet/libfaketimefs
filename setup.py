@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='libfaketimefs',
-    version='0.0.3',
+    version='0.0.4',
     description='Dynamic faketimerc file using a FUSE filesystem',
     author='Raymond Butcher',
     author_email='ray.butcher@claranet.uk',

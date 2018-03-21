@@ -25,6 +25,11 @@ $(SDIST): $(SOURCE)
 $(WHEEL): $(SOURCE)
 	python setup.py bdist_wheel
 
+.PHONY: test
+test:
+	python -m doctest libfaketimefs_ctl/__init__.py
+	flake8 bin/libfaketimefs libfaketimefs/__init__.py setup.py
+
 .PHONY: build
 build: $(SDIST) $(WHEEL)
 
@@ -56,13 +61,13 @@ tomorrow10s := $(shell date -d '+86410 seconds' +%s)
 # Jump to now.
 .PHONY: jump
 jump:
-	echo '$(now) $(now) $(now) 0' > testmount/control
+	echo '$(now) $(now) $(now) 1' > testmount/control
 	watch -n 1 "cat testmount/realtime && echo && cat testmount/faketimerc"
 
 # Jump to tomorrow.
 .PHONY: jump1d
 jump1d:
-	echo '$(now) $(tomorrow) $(tomorrow) 0' > testmount/control
+	echo '$(now) $(tomorrow) $(tomorrow) 1' > testmount/control
 	watch -n 1 "cat testmount/realtime && echo && cat testmount/faketimerc"
 
 # Move at normal speed. This is useless.
